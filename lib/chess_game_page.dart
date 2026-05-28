@@ -1,5 +1,7 @@
 import 'package:chess_app/features/chess/controllers/chess_game_controller.dart';
 import 'package:chess_app/features/chess/utils/chess_piece_mapper.dart';
+import 'package:chess_app/services/bluetooth/ble_controller.dart';
+import 'package:chess_app/services/board_motion/physical_move_planner.dart';
 import 'package:flutter/material.dart';
 
 class ChessGamePage extends StatefulWidget {
@@ -11,6 +13,8 @@ class ChessGamePage extends StatefulWidget {
 
 class _ChessGamePageState extends State<ChessGamePage> {
   final ChessGameController game = ChessGameController.instance;
+  final BleController ble = BleController.instance;
+  final PhysicalMovePlanner physicalMovePlanner = PhysicalMovePlanner();
 
   String _squareName(int row, int col) {
     final file = String.fromCharCode('a'.codeUnitAt(0) + col);
@@ -24,6 +28,46 @@ class _ChessGamePageState extends State<ChessGamePage> {
         content: Text("Microfone pressionado. Aqui entrará o comando de voz."),
       ),
     );
+  }
+
+  Future<void> _handleSquareTap(int row, int col) async {
+    final moveResult = game.tapSquare(row, col);
+
+    if (moveResult == null) {
+      return;
+    }
+
+    final moveUci = moveResult.uci;
+    final physicalPlan = physicalMovePlanner.buildPlan(moveResult);
+
+    if (!ble.isConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Jogada realizada: $moveUci. Bluetooth não conectado."),
+        ),
+      );
+      return;
+    }
+
+    try {
+      await ble.sendMotionPlan(physicalPlan);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Jogada enviada ao tabuleiro: $moveUci"),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Erro ao enviar jogada via Bluetooth: $e"),
+        ),
+      );
+    }
   }
 
   @override
@@ -220,7 +264,8 @@ class _ChessGamePageState extends State<ChessGamePage> {
           : const Color(0xFFB58863);
     
     return GestureDetector(
-      onTap: () => game.tapSquare(row, col),
+      // onTap: () => game.tapSquare(row, col),
+      onTap: () => _handleSquareTap(row, col),
       child: Container(
         color: squareColor,
         child: Stack(

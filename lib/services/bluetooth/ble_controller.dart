@@ -1,3 +1,5 @@
+import 'package:chess_app/services/board_motion/physical_command.dart';
+import 'package:chess_app/services/board_motion/physical_move_planner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -174,8 +176,7 @@ class BleController extends ChangeNotifier {
 
   Future<void> sendText(String text) async {
     if (chessCharacteristic == null) {
-      debugPrint("Nenhum dispositivo BLE conectado.");
-      return;
+      throw Exception("Nenhum tabuleiro BLE conectado.");
     }
 
     await chessCharacteristic!.write(
@@ -186,6 +187,29 @@ class BleController extends ChangeNotifier {
 
   Future<void> sendChessMove(String moveUci) async {
     await sendText(moveUci);
+  }
+
+  Future<void> sendMotionPlan(List<PhysicalCommand> commands) async {
+    for (final command in commands) {
+      final textCommand = _physicalCommandToText(command);
+
+      await sendText(textCommand);
+
+      await Future.delayed(const Duration(milliseconds: 80));
+    }
+  }
+
+  String _physicalCommandToText(PhysicalCommand command) {
+    switch (command.type) {
+      case PhysicalCommandType.moveTo:
+        return "MOVE X${command.x!.toStringAsFixed(2)} Y${command.y!.toStringAsFixed(2)}";
+      case PhysicalCommandType.magnetOn:
+        return "MAGNET ON";
+      case PhysicalCommandType.magnetOff:
+        return "MAGNET OFF";
+      case PhysicalCommandType.delay:
+        return "DELAY ${command.milliseconds}";
+    }
   }
 
   Future<void> sendPing() async {
