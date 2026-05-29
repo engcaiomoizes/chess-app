@@ -1,5 +1,6 @@
 import 'package:chess_app/features/chess/models/chess_move_result.dart';
 import 'package:chess_app/services/board_motion/physical_board_graph.dart';
+import 'package:chess_app/services/board_motion/physical_move_analyser.dart';
 import 'package:dartchess/dartchess.dart';
 
 import 'physical_command.dart';
@@ -8,6 +9,83 @@ class PhysicalMovePlanner {
   static const double squareSize = 40.0;
 
   List<PhysicalCommand> buildPlan(ChessMoveResult move) {
+    final analysis = PhysicalMoveAnalyser.analyse(move);
+
+    switch (analysis.type) {
+      case PhysicalMoveType.castling:
+        return _buildCastlingPlan(move, analysis);
+      
+      case PhysicalMoveType.normal:
+      case PhysicalMoveType.capture:
+      case PhysicalMoveType.enPassant:
+      case PhysicalMoveType.promotion:
+      case PhysicalMoveType.promotionCapture:
+        return _buildNormalOrCapturePlan(move);
+    }
+  }
+
+  List<PhysicalCommand> _buildCastlingPlan(
+    ChessMoveResult move,
+    PhysicalMoveAnalysis analysis,
+  ) {
+    final commands = <PhysicalCommand>[];
+
+    final graph = PhysicalBoardGraph.fromPosition(move.positionBefore);
+    final occupied = Set<int>.from(graph.occupied);
+
+    final kingMove = analysis.primaryMove;
+    final rookMove = analysis.secondaryMove;
+
+    if (rookMove == null) {
+      throw Exception("Roque inválido: movimento da torre não identificado.");
+    }
+
+    final kingFromIndex = PhysicalBoardGraph.indexFromSquare(kingMove.from);
+    final kingToIndex = PhysicalBoardGraph.indexFromSquare(kingMove.to);
+
+    final rookFromIndex = PhysicalBoardGraph.indexFromSquare(rookMove.from);
+    final rookToIndex = PhysicalBoardGraph.indexFromSquare(rookMove.to);
+
+    // 1. Move o rei.
+    //
+    // A casa da torre continua bloqueada, porque a torre ainda está lá.
+    occupied.remove(kingFromIndex);
+
+    commands.addAll(
+      _buildMainMoveWithDetours(
+        fromIndex: kingFromIndex,
+        toIndex: kingToIndex,
+        occupied: occupied,
+        hardBlocked: {
+          rookFromIndex,
+        },
+      ),
+    );
+
+    // O _buildMainMoveWithDetours já atualiza o occupied:
+    // remove kingFromIndex e adiciona kingToIndex.
+
+    // 2. Move a torre.
+    //
+    // A casa final do rei precisa ser bloqueio absoluto,
+    // para a torre não tentar passar por cima do rei.
+    occupied.remove(rookFromIndex);
+
+    commands.addAll(
+      _buildMainMoveWithDetours(
+        fromIndex: rookFromIndex,
+        toIndex: rookToIndex,
+        occupied: occupied,
+        hardBlocked: {
+          kingToIndex,
+        },
+      ),
+    );
+
+    return commands;
+  }
+
+  List<PhysicalCommand> _buildNormalOrCapturePlan(ChessMoveResult move) {
     final commands = <PhysicalCommand>[];
 
     final graph = PhysicalBoardGraph.fromPosition(move.positionBefore);

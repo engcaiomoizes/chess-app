@@ -2,6 +2,7 @@ import 'package:chess_app/features/chess/controllers/chess_game_controller.dart'
 import 'package:chess_app/features/chess/utils/chess_piece_mapper.dart';
 import 'package:chess_app/services/bluetooth/ble_controller.dart';
 import 'package:chess_app/services/board_motion/physical_move_planner.dart';
+import 'package:chess_app/services/voice/voice_controller.dart';
 import 'package:flutter/material.dart';
 
 class ChessGamePage extends StatefulWidget {
@@ -15,6 +16,13 @@ class _ChessGamePageState extends State<ChessGamePage> {
   final ChessGameController game = ChessGameController.instance;
   final BleController ble = BleController.instance;
   final PhysicalMovePlanner physicalMovePlanner = PhysicalMovePlanner();
+  final VoiceController voice = VoiceController.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    voice.initialize();
+  }
 
   String _squareName(int row, int col) {
     final file = String.fromCharCode('a'.codeUnitAt(0) + col);
@@ -22,11 +30,20 @@ class _ChessGamePageState extends State<ChessGamePage> {
     return "$file$rank";
   }
 
-  void _onMicPressed() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Microfone pressionado. Aqui entrará o comando de voz."),
-      ),
+  Future<void> _onMicPressed() async {
+    if (voice.isListening) {
+      await voice.stopListening();
+      return;
+    }
+
+    await voice.startListening(
+      onResult: (text) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Você disse: $text"),
+          ),
+        );
+      },
     );
   }
 
